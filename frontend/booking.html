@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Booking - Pineus Tilu</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<h2>Form Booking</h2>
+<form id="f">
+  <input name="email" type="email" placeholder="Email untuk OTP" required><br>
+  <input name="bookingDate" type="date" required><br>
+  <input name="amount" type="number" placeholder="Jumlah (Rp)" required><br>
+  <button>Book Sekarang</button>
+</form>
+<div id="m"></div>
+<script>
+const f=document.getElementById('f'),m=document.getElementById('m');
+f.onsubmit=async e=>{
+ e.preventDefault();
+ const data=Object.fromEntries(new FormData(f));
+ const res=await fetch('/api/book',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+ const j=await res.json();
+ m.textContent=j.success?j.message:j.error;
+ if(j.success) localStorage.setItem('bookingId', j.bookingId);
+ if(j.success) setTimeout(()=>location='verify.html',1000);
+};
+</script>
+</body>
+</html>

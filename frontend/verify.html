@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="id">
+<head><meta charset="utf-8"><title>Verifikasi OTP</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<h2>Verifikasi OTP</h2>
+<form id="f">
+  <input name="otp" placeholder="Kode OTP" required><br>
+  <button>Verifikasi</button>
+</form>
+<div id="m"></div>
+<script>
+const f=document.getElementById('f'),m=document.getElementById('m');
+const bid=localStorage.getItem('bookingId');
+f.onsubmit=async e=>{
+ e.preventDefault();
+ const otp=(new FormData(f)).get('otp');
+ const res=await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bookingId:bid,otp})});
+ const j=await res.json();
+ m.textContent=j.success?j.message:j.error;
+};
+</script>
+</body>
+</html>

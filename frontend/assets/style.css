@@ -1,0 +1,41 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #f9f9f9;
+  color: #222;
+  text-align: center;
+  padding: 40px;
+}
+
+header {
+  background: #003580;
+  color: white;
+  padding: 15px;
+}
+
+a {
+  color: #0071c2;
+  text-decoration: none;
+  margin: 0 5px;
+}
+
+input, button {
+  padding: 10px;
+  margin: 5px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+button {
+  background: #0071c2;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #004a8f;
+}
+
+.hero {
+  margin-top: 60px;
+}
