@@ -1,6 +1,4 @@
-// =============================================
-// 🌲 Pineus Tilu Booking - Backend Server
-// =============================================
+// server.js
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -16,27 +14,24 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ---------------------
-// 🔧 Middleware
+// Middleware
 // ---------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(promBundle({ includeMethod: true }));
 
-// ✅ Serve frontend statically (fix ENOENT)
-app.use(express.static(path.join(__dirname, '../frontend')));
-
 // ---------------------
-// 🗄️ MySQL Connection
+// MySQL Connection
 // ---------------------
 let db;
 (async () => {
   try {
     db = await mysql.createPool({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
+      host: process.env.DB_HOST || 'mysql',
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASS || 'rootpassword',
+      database: process.env.DB_NAME || 'pineus_tilu',
       connectionLimit: 10,
     });
     console.log('✅ Terhubung ke MySQL');
@@ -47,9 +42,9 @@ let db;
 })();
 
 // ---------------------
-// 🔐 Session Middleware
+// Session Middleware
 // ---------------------
-const sessions = {}; // { sessionId: userId }
+const sessions = {};
 
 function requireLogin(req, res, next) {
   const sid = req.cookies.sessionId;
@@ -62,7 +57,7 @@ function requireLogin(req, res, next) {
 }
 
 // ---------------------
-// 🔢 OTP Helper
+// OTP Helper
 // ---------------------
 function generateSalt() {
   return crypto.randomBytes(16).toString('hex');
@@ -72,7 +67,7 @@ function hashOtp(otp, salt) {
 }
 
 // ---------------------
-// 📧 Email Configuration
+// Email Configuration
 // ---------------------
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -104,7 +99,7 @@ async function sendOtpEmail(to, otp) {
 }
 
 // ---------------------
-// 👤 Auth Routes
+// Auth Routes
 // ---------------------
 app.post('/api/register', async (req, res) => {
   const { name, email, phone, password } = req.body;
@@ -159,7 +154,7 @@ app.post('/api/logout', (req, res) => {
 });
 
 // ---------------------
-// 🏕️ Booking Routes
+// Booking Routes
 // ---------------------
 app.post('/api/book', requireLogin, async (req, res) => {
   const { bookingDate, amount } = req.body;
@@ -229,14 +224,14 @@ app.get('/api/bookings', requireLogin, async (req, res) => {
 });
 
 // ---------------------
-// 🧭 Frontend Route
+// Serve Frontend Fallback
 // ---------------------
-app.get('/', (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 // ---------------------
-// 🚀 Jalankan Server
+// Start Server
 // ---------------------
 app.listen(PORT, () => {
   console.log(`🚀 Pineus Tilu berjalan di http://localhost:${PORT}`);
