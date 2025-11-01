@@ -1,48 +1,69 @@
+// =============================================
+// 🌲 Pineus Tilu Booking - Backend Server
+// =============================================
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const mysql = require('mysql2/promise');
+const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
 const cookieParser = require('cookie-parser');
 const { v4: uuidv4 } = require('uuid');
-const nodemailer = require('nodemailer');
 const crypto = require('crypto');
-const path = require('path');
+const promBundle = require('express-prom-bundle');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ---------------------
+// 🔧 Middleware
+// ---------------------
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use(promBundle({ includeMethod: true }));
 
-// Connect MySQL
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-});
+// ✅ Serve frontend statically (fix ENOENT)
+app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Session (sederhana)
-const sessions = {};
+// ---------------------
+// 🗄️ MySQL Connection
+// ---------------------
+let db;
+(async () => {
+  try {
+    db = await mysql.createPool({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME,
+      connectionLimit: 10,
+    });
+    console.log('✅ Terhubung ke MySQL');
+  } catch (err) {
+    console.error('❌ Gagal konek ke database:', err);
+    process.exit(1);
+  }
+})();
 
-// Middleware login
+// ---------------------
+// 🔐 Session Middleware
+// ---------------------
+const sessions = {}; // { sessionId: userId }
+
 function requireLogin(req, res, next) {
   const sid = req.cookies.sessionId;
-  if (sid && sessions[sid]) return next();
-  return res.status(401).json({ success: false, error: 'Harus login' });
+  if (sid && sessions[sid]) {
+    req.userId = sessions[sid];
+    next();
+  } else {
+    res.status(401).json({ success: false, error: 'Silakan login terlebih dahulu.' });
+  }
 }
 
-// Email transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASS }
-});
-
-// Helpers
-function generateOtp() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+// ---------------------
+// 🔢 OTP Helper
+// ---------------------
 function generateSalt() {
   return crypto.randomBytes(16).toString('hex');
 }
@@ -50,89 +71,173 @@ function hashOtp(otp, salt) {
   return crypto.createHmac('sha256', salt).update(String(otp)).digest('hex');
 }
 
-// ROUTES
+// ---------------------
+// 📧 Email Configuration
+// ---------------------
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
+  },
+});
 
-// Register
+async function sendOtpEmail(to, otp) {
+  const html = `
+  <div style="font-family: Arial; padding: 10px;">
+    <h2>Kode OTP Booking Pineus Tilu</h2>
+    <p>Gunakan kode berikut untuk verifikasi booking Anda:</p>
+    <h1 style="letter-spacing:4px;">${otp}</h1>
+    <p>Kode berlaku selama 5 menit.</p>
+  </div>`;
+  try {
+    await transporter.sendMail({
+      from: `Pineus Tilu <${process.env.GMAIL_USER}>`,
+      to,
+      subject: 'Kode OTP Booking Anda',
+      html,
+    });
+    console.log('📩 OTP terkirim ke', to);
+  } catch (err) {
+    console.error('❌ Gagal kirim email:', err.message);
+  }
+}
+
+// ---------------------
+// 👤 Auth Routes
+// ---------------------
 app.post('/api/register', async (req, res) => {
   const { name, email, phone, password } = req.body;
-  if (!name || !email || !password) return res.json({ success: false, error: 'Data tidak lengkap' });
+  if (!name || !email || !phone || !password)
+    return res.json({ success: false, error: 'Semua field wajib diisi.' });
+
   try {
+    const [exist] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+    if (exist.length > 0)
+      return res.json({ success: false, error: 'Email sudah terdaftar.' });
+
     const hash = await bcrypt.hash(password, 10);
     const id = uuidv4();
-    const conn = await pool.getConnection();
-    await conn.query('INSERT INTO users VALUES (?, ?, ?, ?, ?)', [id, name, email, phone, hash]);
-    conn.release();
-    res.json({ success: true, message: 'Registrasi berhasil' });
+    await db.query(
+      'INSERT INTO users (id,name,email,phone,password_hash) VALUES (?,?,?,?,?)',
+      [id, name, email, phone, hash]
+    );
+    res.json({ success: true, message: 'Registrasi berhasil!' });
   } catch (err) {
-    console.error(err);
-    res.json({ success: false, error: 'Email sudah digunakan' });
+    console.error('❌ Error register:', err);
+    res.json({ success: false, error: 'Terjadi kesalahan server.' });
   }
 });
 
-// Login
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
-  const conn = await pool.getConnection();
-  const [rows] = await conn.query('SELECT * FROM users WHERE email = ?', [email]);
-  conn.release();
-  if (!rows.length) return res.json({ success: false, error: 'Email tidak ditemukan' });
-  const user = rows[0];
-  const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) return res.json({ success: false, error: 'Password salah' });
-  const sid = uuidv4();
-  sessions[sid] = user.id;
-  res.cookie('sessionId', sid, { httpOnly: true });
-  res.json({ success: true, message: 'Login berhasil' });
-});
+  try {
+    const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+    if (rows.length === 0)
+      return res.json({ success: false, error: 'Email tidak ditemukan.' });
 
-// Booking
-app.post('/api/book', requireLogin, async (req, res) => {
-  const { bookingDate, amount, email } = req.body;
-  const otp = generateOtp();
-  const salt = generateSalt();
-  const otpHash = hashOtp(otp, salt);
-  const expires = Date.now() + 5 * 60 * 1000;
-  const id = uuidv4();
-  const conn = await pool.getConnection();
-  await conn.query('INSERT INTO bookings (id, user_id, booking_date, amount, otp_hash, otp_salt, otp_expires) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-    id, sessions[req.cookies.sessionId], bookingDate, amount, otpHash, salt, expires
-  ]);
-  conn.release();
-  await transporter.sendMail({
-    from: process.env.GMAIL_USER,
-    to: email,
-    subject: 'OTP Booking Pineus Tilu',
-    html: `<h2>Kode OTP Anda</h2><h1>${otp}</h1><p>Berlaku 5 menit.</p>`
-  });
-  res.json({ success: true, message: 'OTP dikirim ke email.', bookingId: id });
-});
+    const user = rows[0];
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok)
+      return res.json({ success: false, error: 'Password salah.' });
 
-// Verify
-app.post('/api/verify', requireLogin, async (req, res) => {
-  const { bookingId, otp } = req.body;
-  const conn = await pool.getConnection();
-  const [rows] = await conn.query('SELECT * FROM bookings WHERE id = ?', [bookingId]);
-  conn.release();
-  if (!rows.length) return res.json({ success: false, error: 'Booking tidak ditemukan' });
-  const booking = rows[0];
-  if (Date.now() > booking.otp_expires) return res.json({ success: false, error: 'OTP kadaluarsa' });
-  const hash = hashOtp(otp, booking.otp_salt);
-  if (hash === booking.otp_hash) {
-    const conn2 = await pool.getConnection();
-    await conn2.query('UPDATE bookings SET is_verified = 1 WHERE id = ?', [bookingId]);
-    conn2.release();
-    res.json({ success: true, message: 'Booking terverifikasi!' });
-  } else {
-    res.json({ success: false, error: 'OTP salah' });
+    const sessionId = uuidv4();
+    sessions[sessionId] = user.id;
+    res.cookie('sessionId', sessionId, { httpOnly: true });
+    res.json({ success: true, message: 'Login berhasil!' });
+  } catch (err) {
+    console.error('❌ Error login:', err);
+    res.json({ success: false, error: 'Kesalahan server.' });
   }
 });
 
-// List Booking
-app.get('/api/bookings', requireLogin, async (req, res) => {
-  const conn = await pool.getConnection();
-  const [rows] = await conn.query('SELECT * FROM bookings WHERE user_id = ?', [sessions[req.cookies.sessionId]]);
-  conn.release();
-  res.json({ success: true, bookings: rows });
+app.post('/api/logout', (req, res) => {
+  const sid = req.cookies.sessionId;
+  if (sid) delete sessions[sid];
+  res.clearCookie('sessionId');
+  res.json({ success: true, message: 'Logout berhasil.' });
 });
 
-app.listen(PORT, () => console.log(`🌲 Pineus Tilu running at http://localhost:${PORT}`));
+// ---------------------
+// 🏕️ Booking Routes
+// ---------------------
+app.post('/api/book', requireLogin, async (req, res) => {
+  const { bookingDate, amount } = req.body;
+  if (!bookingDate || !amount)
+    return res.json({ success: false, error: 'Semua field wajib diisi.' });
+
+  try {
+    const bookingId = uuidv4();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const salt = generateSalt();
+    const otpHash = hashOtp(otp, salt);
+    const otpExpires = Date.now() + 5 * 60 * 1000;
+
+    const [userRows] = await db.query('SELECT email FROM users WHERE id = ?', [req.userId]);
+    const userEmail = userRows[0]?.email;
+
+    await db.query(
+      `INSERT INTO bookings (id,user_id,booking_date,amount,otp_hash,otp_salt,otp_expires,created_at)
+       VALUES (?,?,?,?,?,?,?,NOW())`,
+      [bookingId, req.userId, bookingDate, amount, otpHash, salt, otpExpires]
+    );
+
+    await sendOtpEmail(userEmail, otp);
+    res.json({ success: true, message: 'Booking berhasil. OTP dikirim ke email.', bookingId });
+  } catch (err) {
+    console.error('❌ Error booking:', err);
+    res.json({ success: false, error: 'Gagal membuat booking.' });
+  }
+});
+
+app.post('/api/verify', requireLogin, async (req, res) => {
+  const { bookingId, otp } = req.body;
+  try {
+    const [rows] = await db.query(
+      'SELECT * FROM bookings WHERE id = ? AND user_id = ?',
+      [bookingId, req.userId]
+    );
+    if (rows.length === 0)
+      return res.json({ success: false, error: 'Booking tidak ditemukan.' });
+
+    const booking = rows[0];
+    if (Date.now() > booking.otp_expires)
+      return res.json({ success: false, error: 'OTP kedaluwarsa.' });
+
+    const hash = hashOtp(otp, booking.otp_salt);
+    if (hash !== booking.otp_hash)
+      return res.json({ success: false, error: 'OTP salah.' });
+
+    await db.query('UPDATE bookings SET is_verified = 1 WHERE id = ?', [bookingId]);
+    res.json({ success: true, message: 'Booking terverifikasi!' });
+  } catch (err) {
+    console.error('❌ Error verify:', err);
+    res.json({ success: false, error: 'Gagal verifikasi OTP.' });
+  }
+});
+
+app.get('/api/bookings', requireLogin, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      'SELECT id, booking_date, amount, is_verified, created_at FROM bookings WHERE user_id = ? ORDER BY created_at DESC',
+      [req.userId]
+    );
+    res.json({ success: true, bookings: rows });
+  } catch (err) {
+    res.json({ success: false, error: 'Gagal memuat data booking.' });
+  }
+});
+
+// ---------------------
+// 🧭 Frontend Route
+// ---------------------
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+// ---------------------
+// 🚀 Jalankan Server
+// ---------------------
+app.listen(PORT, () => {
+  console.log(`🚀 Pineus Tilu berjalan di http://localhost:${PORT}`);
+});

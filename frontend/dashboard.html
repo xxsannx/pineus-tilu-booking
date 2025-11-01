@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="id">
+<head><meta charset="utf-8"><title>Dashboard | Pineus Tilu</title></head>
+<body>
+  <h2>Dashboard Booking Pineus Tilu</h2>
+  <button id="logout">Logout</button>
+  <div id="booking-section" style="display:none;">
+    <h3>Buat Booking Baru</h3>
+    <form id="f">
+      <input name="bookingDate" type="date" required><br>
+      <input name="amount" type="number" placeholder="Jumlah tamu" required><br>
+      <button type="submit">Buat Booking</button>
+    </form>
+  </div>
+  <div id="m"></div>
+  <h3>Daftar Booking Anda</h3>
+  <div id="list"></div>
+<script>
+const f=document.getElementById('f'),m=document.getElementById('m'),list=document.getElementById('list');
+async function checkLogin(){
+  const res=await fetch('http://localhost:3000/api/bookings',{credentials:'include'});
+  if(res.status===401){alert('Silakan login terlebih dahulu!');location='login.html';}
+  else{document.getElementById('booking-section').style.display='block';loadBookings();}
+}
+async function loadBookings(){
+  const res=await fetch('http://localhost:3000/api/bookings',{credentials:'include'});
+  const j=await res.json();
+  if(j.success){
+    list.innerHTML=j.bookings.map(b=>`<div><b>${b.booking_date}</b> - ${b.amount} tamu - ${b.is_verified?'✅':'⏳'} ${!b.is_verified?`<button onclick="toVerify('${b.id}')">Verifikasi</button>`:''}</div>`).join('');
+  } else list.textContent='Gagal memuat data';
+}
+f.onsubmit=async e=>{
+  e.preventDefault();
+  const data=Object.fromEntries(new FormData(f));
+  const res=await fetch('http://localhost:3000/api/book',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(data)});
+  const j=await res.json();
+  m.textContent=j.success?j.message:j.error;
+  if(j.success)loadBookings();
+};
+document.getElementById('logout').onclick=async()=>{await fetch('http://localhost:3000/api/logout',{method:'POST',credentials:'include'});localStorage.clear();location='login.html';};
+window.toVerify=id=>{localStorage.setItem('bookingId',id);location='verify.html';};
+checkLogin();
+</script>
+</body>
+</html>

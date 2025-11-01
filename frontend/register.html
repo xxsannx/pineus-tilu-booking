@@ -1,30 +1,30 @@
 <!doctype html>
 <html lang="id">
-<head>
-<meta charset="utf-8">
-<title>Register - Pineus Tilu</title>
-<link rel="stylesheet" href="assets/style.css">
-</head>
+<head><meta charset="utf-8"><title>Daftar | Pineus Tilu</title></head>
 <body>
-<h2>Register</h2>
-<form id="f">
-  <input name="name" placeholder="Nama" required><br>
-  <input name="email" type="email" placeholder="Email" required><br>
-  <input name="phone" placeholder="No HP" required><br>
-  <input name="password" type="password" placeholder="Password" required><br>
-  <button>Daftar</button>
-</form>
-<div id="m"></div>
-<p><a href="login.html">Login</a></p>
+  <h2>Daftar Akun Pineus Tilu</h2>
+  <form id="f">
+    <input name="name" placeholder="Nama" required><br>
+    <input name="email" type="email" placeholder="Email" required><br>
+    <input name="phone" placeholder="Nomor HP" required><br>
+    <input name="password" type="password" placeholder="Password" required><br>
+    <button type="submit">Daftar</button>
+  </form>
+  <div id="m" style="color:red;"></div>
+  <p>Sudah punya akun? <a href="login.html">Login</a></p>
 <script>
 const f=document.getElementById('f'),m=document.getElementById('m');
 f.onsubmit=async e=>{
- e.preventDefault();
- const data=Object.fromEntries(new FormData(f));
- const res=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
- const j=await res.json();
- m.textContent=j.success?j.message:j.error;
- if(j.success)setTimeout(()=>location='login.html',1000);
+  e.preventDefault();
+  const data=Object.fromEntries(new FormData(f));
+  try{
+    const res=await fetch('http://localhost:3000/api/register',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)
+    });
+    const j=await res.json();
+    if(j.success){m.style.color='green';m.textContent=j.message;setTimeout(()=>location='login.html',1500);}
+    else m.textContent=j.error;
+  }catch{m.textContent='Server tidak dapat dihubungi';}
 };
 </script>
 </body>

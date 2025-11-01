@@ -1,25 +1,63 @@
 <!doctype html>
 <html lang="id">
-<head><meta charset="utf-8"><title>Verifikasi OTP</title>
-<link rel="stylesheet" href="assets/style.css">
+<head>
+  <meta charset="utf-8">
+  <title>Verifikasi OTP | Pineus Tilu</title>
 </head>
 <body>
-<h2>Verifikasi OTP</h2>
-<form id="f">
-  <input name="otp" placeholder="Kode OTP" required><br>
-  <button>Verifikasi</button>
-</form>
-<div id="m"></div>
-<script>
-const f=document.getElementById('f'),m=document.getElementById('m');
-const bid=localStorage.getItem('bookingId');
-f.onsubmit=async e=>{
- e.preventDefault();
- const otp=(new FormData(f)).get('otp');
- const res=await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bookingId:bid,otp})});
- const j=await res.json();
- m.textContent=j.success?j.message:j.error;
-};
-</script>
+  <h2>Verifikasi OTP Booking</h2>
+
+  <div id="info">
+    <p>ID Booking: <b id="bid">-</b></p>
+    <p>Masukkan kode OTP yang telah dikirim ke email Anda.</p>
+  </div>
+
+  <form id="f">
+    <input name="otp" placeholder="Kode OTP" required><br>
+    <button type="submit">Verifikasi</button>
+  </form>
+
+  <div id="m" style="margin-top:10px;"></div>
+
+  <p><a href="dashboard.html">Kembali ke Dashboard</a></p>
+
+  <script>
+    const bid = localStorage.getItem('bookingId');
+    const f = document.getElementById('f');
+    const m = document.getElementById('m');
+    const bidSpan = document.getElementById('bid');
+
+    if (!bid) {
+      alert('Tidak ada booking yang perlu diverifikasi.');
+      location.href = 'dashboard.html';
+    } else {
+      bidSpan.textContent = bid;
+    }
+
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const otp = (new FormData(f)).get('otp');
+      try {
+        const res = await fetch('http://localhost:3000/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ bookingId: bid, otp })
+        });
+        const j = await res.json();
+        if (j.success) {
+          m.style.color = 'green';
+          m.textContent = j.message;
+          setTimeout(() => location = 'dashboard.html', 1500);
+        } else {
+          m.style.color = 'red';
+          m.textContent = j.error;
+        }
+      } catch {
+        m.style.color = 'red';
+        m.textContent = 'Server tidak dapat dihubungi.';
+      }
+    };
+  </script>
 </body>
 </html>
